@@ -17,9 +17,17 @@ import com.facebook.AccessTokenTracker;
 import com.facebook.CallbackManager;
 import com.facebook.FacebookCallback;
 import com.facebook.FacebookException;
+import com.facebook.GraphRequest;
+import com.facebook.GraphResponse;
+import com.facebook.HttpMethod;
 import com.facebook.login.LoginManager;
 import com.facebook.login.LoginResult;
 import com.facebook.login.widget.LoginButton;
+
+import org.json.JSONObject;
+
+import java.util.Arrays;
+import java.util.List;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -72,25 +80,36 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onClick(View v) {
                 if (!isLogin()) {
-                    mLoginManager.registerCallback(callbackManager, new FacebookCallback<LoginResult>() {
-                        @Override
-                        public void onSuccess(LoginResult loginResult) {
-
-                        }
-
-                        @Override
-                        public void onCancel() {
-
-                        }
-
-                        @Override
-                        public void onError(FacebookException error) {
-
-                        }
-                    });
-                    mLoginManager.logInWithReadPermissions(MainActivity.this, null);
+                    login(null);
                 } else {
                     mLoginManager.logOut();
+                }
+            }
+        });
+
+        Button btn = (Button)findViewById(R.id.btn_profile);
+        btn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if (!isLogin()) {
+                    mode = MODE_PROFILE;
+                    login(null);
+                } else {
+                    getProfile();
+                }
+            }
+        });
+
+        btn = (Button)findViewById(R.id.btn_post);
+        btn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                AccessToken token = AccessToken.getCurrentAccessToken();
+                if (token == null || !token.getPermissions().contains("publish_actions")) {
+                    mode = MODE_POST;
+                    login(Arrays.asList("publish_actions"), false);
+                } else {
+                    postMessage();
                 }
             }
         });
@@ -102,6 +121,90 @@ public class MainActivity extends AppCompatActivity {
             }
         };
     }
+
+    private void postMessage() {
+        String message = "facebook test message";
+        AccessToken accessToken = AccessToken.getCurrentAccessToken();
+        String graphPath = "/me/feed";
+        Bundle parameters = new Bundle();
+        parameters.putString("message", message);
+        parameters.putString("link", "http://developers.facebook.com/docs/android");
+        parameters.putString("picture", "https://raw.github.com/fbsamples/.../iossdk_logo.png");
+        parameters.putString("name", "Hello Facebook");
+        parameters.putString("description", "The 'Hello Facebook' sample  showcases simple …");
+        GraphRequest request = new GraphRequest(accessToken, graphPath, parameters, HttpMethod.POST,
+                new GraphRequest.Callback() {
+                    @Override
+                    public void onCompleted(GraphResponse response) {
+                        JSONObject data = response.getJSONObject();
+                        String id = (data == null)?null:data.optString("id");
+                        if (id == null) {
+                            Toast.makeText(MainActivity.this, "error : " + response.getError().getErrorMessage(), Toast.LENGTH_SHORT).show();
+                        } else {
+                            Toast.makeText(MainActivity.this, "post object id : " + id, Toast.LENGTH_SHORT).show();
+                        }
+                    }
+                });
+        request.executeAsync();
+    }
+
+    public static final int MODE_NONE = -1;
+    public static final int MODE_PROFILE = 1;
+    public static final int MODE_POST = 2;
+    int mode = MODE_NONE;
+
+    private void login(List<String> permissions){
+        login(permissions, true);
+    }
+
+    private void login(List<String> permissions, boolean isRead){
+        mLoginManager.registerCallback(callbackManager, new FacebookCallback<LoginResult>() {
+            @Override
+            public void onSuccess(LoginResult loginResult) {
+                if (mode == MODE_PROFILE) {
+                    getProfile();
+                    mode = MODE_NONE;
+                } else if (mode == MODE_POST) {
+                    postMessage();
+                    mode = MODE_NONE;
+                }
+            }
+
+            @Override
+            public void onCancel() {
+
+            }
+
+            @Override
+            public void onError(FacebookException error) {
+
+            }
+        });
+        if(isRead){
+            mLoginManager.logInWithReadPermissions(MainActivity.this, permissions);
+        }else{
+            mLoginManager.logInWithPublishPermissions(MainActivity.this, permissions);
+        }
+
+    }
+
+    private void getProfile() {
+        AccessToken token = AccessToken.getCurrentAccessToken();
+        GraphRequest request = new GraphRequest(token, "/me", null, HttpMethod.GET, new GraphRequest.Callback() {
+            @Override
+            public void onCompleted(GraphResponse response) {
+                JSONObject object = response.getJSONObject();
+                if (object == null) {
+                    String message = response.getError().getErrorMessage();
+                    Toast.makeText(MainActivity.this, "error : " + message, Toast.LENGTH_SHORT).show();
+                } else {
+                    Toast.makeText(MainActivity.this, "profile : " + object.toString(), Toast.LENGTH_SHORT).show();
+                }
+            }
+        });
+        request.executeAsync();
+    }
+
 
     @Override
     protected void onDestroy() {
